@@ -357,6 +357,7 @@
           <option value="5" selected>5 年</option>
           <option value="7">7 年</option>
         </select>
+        <span class="hint" id="termHint"></span>
       </div>
       <div class="form-group">
         <label>發行規模（億元）<span class="auto-tag">自動</span></label>
@@ -738,15 +739,21 @@ async function fetchAll() {
     }
 
     // ── 年期 ──
-    if (data.term && [3,5,7].includes(data.term)) {
-      document.getElementById('term').value = String(data.term);
-      markFieldAuto('term');
-      successCount++;
-    } else if (data.term) {
-      // 不是標準年期，取最近值
-      const t = data.term <= 4 ? '3' : data.term <= 6 ? '5' : '7';
+    if (data.term) {
+      const t = [3,5,7].includes(data.term) ? String(data.term)
+              : data.term <= 4 ? '3' : data.term <= 6 ? '5' : '7';
       document.getElementById('term').value = t;
       markFieldAuto('term');
+      // 若為預設值，在 hint 顯示提示
+      const termHint = document.getElementById('termHint');
+      if (termHint) {
+        termHint.textContent = data.termIsDefault
+          ? '⚠️ 預設 5 年（OTC 標準），請至 MOPS 確認實際年期'
+          : '';
+      }
+      if (!data.termIsDefault) successCount++;
+    } else {
+      clearFieldAuto('term');
     }
 
     // ── 發行規模 ──
@@ -774,26 +781,32 @@ async function fetchAll() {
     }
 
     // ── 狀態列 ──
-    const cbManualFields = ['轉換價格', '擔保類型', '年期', '發行規模', '承銷商'];
-    const hasCBData = !!data.conversionPrice;
-    const autoCount = [data.currentPrice, data.shareCapital, data.industryKey]
-                        .filter(Boolean).length;
+    const hasCBData   = !!data.conversionPrice;
+    const hasAuction  = data.sources?.auctionData;
+    const autoCount   = [data.currentPrice, data.shareCapital, data.industryKey].filter(Boolean).length;
+    const autoFields  = [];
+    if (data.currentPrice)  autoFields.push('股價');
+    if (data.collateral)    autoFields.push('擔保');
+    if (data.issueSize)     autoFields.push('發行規模');
+    if (data.term)          autoFields.push(data.termIsDefault ? '年期(預設)' : '年期');
+    if (data.shareCapital)  autoFields.push('股本');
+    if (data.industryKey)   autoFields.push('產業');
+    if (data.underwriterKey)autoFields.push('承銷商');
 
-    if (autoCount === 3 && hasCBData) {
+    const mopsLink = data.mopsUrl
+      ? `　<a href="${data.mopsUrl}" target="_blank" style="color:#0369a1;font-weight:700;white-space:nowrap">→ MOPS 查轉換價格 ↗</a>`
+      : '';
+
+    if (autoCount === 0) {
+      setStatus('❌ 資料抓取失敗，請手動填寫所有欄位', 'error');
+    } else if (hasCBData) {
       setStatus(`✅ 所有欄位自動帶入完成（${data.fetchedAt}）`, 'ok');
-    } else if (autoCount > 0) {
-      const mopsLink = data.mopsUrl
-        ? `　<a href="${data.mopsUrl}" target="_blank" style="color:#0369a1;font-weight:700">→ 開啟 MOPS 查詢 CB 資料</a>`
-        : '';
-      const msg = hasCBData
-        ? `⚡ 股價/股本/產業已自動帶入，部分欄位請確認（${data.fetchedAt}）`
-        : `⚡ 股價(${data.currentPrice})、股本(${data.shareCapital}億)、產業已自動帶入。`
-          + `&nbsp;轉換價格等 CB 條件請到 MOPS 查詢後手動填入。${mopsLink}`;
+    } else {
+      const msg = `⚡ 已自動帶入：${autoFields.join('、')}。`
+        + `&nbsp;<strong style="color:#dc2626">轉換價格</strong>須至 MOPS 查詢後手動填入。${mopsLink}`;
       document.getElementById('statusText').innerHTML = msg;
       document.getElementById('statusBar').style.display = 'flex';
       document.getElementById('statusDot').className = 'dot dot-missing';
-    } else {
-      setStatus('❌ 資料抓取失敗，請手動填寫所有欄位', 'error');
     }
 
   } catch (err) {

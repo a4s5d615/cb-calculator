@@ -266,45 +266,97 @@ function mapUnderwriter(s) {
 }
 
 // ─────────────────────────────────────────────
+//  5. 從 TWSE 競拍公告抓 CB 條件（MOPS 的備援）
+//     取得：擔保類型、發行規模、承銷商
+//     年期預設 5 年（台灣 OTC 可轉債標準）
+// ─────────────────────────────────────────────
+async function fetchCBFromAuction(cbCode) {
+  try {
+    const r = await http.get(
+      'https://www.twse.com.tw/rwd/zh/announcement/auction?response=json',
+      { headers: { ...BASE_HEADERS, Referer: 'https://www.twse.com.tw/' } }
+    );
+    const fields = r.data?.fields || [];
+    const rows   = r.data?.data   || [];
+    const fi = {};
+    fields.forEach((name, i) => { fi[name] = i; });
+
+    const IDX = {
+      code:        fi['證券代號']                    ?? 3,
+      issueType:   fi['發行性質']                    ?? 5,
+      quantity:    fi['競拍數量(張)']                ?? 9,
+      underwriter: fi['主辦券商']                    ?? 16,
+      cancelled:   fi['取消競價拍賣(流標或取消)']    ?? 25,
+    };
+
+    const row = rows.find(r => String(r[IDX.code] || '').trim() === cbCode);
+    if (!row || String(row[IDX.cancelled] || '').trim()) return null;
+
+    const issueType  = row[IDX.issueType] || '';
+    const collateral = issueType.includes('無擔保') ? 'unsecured' : 'secured';
+    // 1 張可轉債 = 面額 NT$100,000；換算億元
+    const qty = parseFloat(String(row[IDX.quantity] || '0').replace(/,/g, ''));
+    const issueSize = qty > 0 ? parseFloat((qty / 1000).toFixed(2)) : null;
+
+    return {
+      collateral,
+      collateralText: collateral === 'unsecured' ? '無擔保' : '有擔保',
+      issueSize,
+      term:          5,     // 台灣 OTC CB 標準年期
+      termIsDefault: true,  // 前端標示「預設，請確認」
+      underwriter:   String(row[IDX.underwriter] || '').trim() || null,
+    };
+  } catch (_) { return null; }
+}
+
+// ─────────────────────────────────────────────
 //  主 API：GET /api/cb/:cbCode
 // ─────────────────────────────────────────────
 app.get('/api/cb/:cbCode', async (req, res) => {
-  const cbCode   = req.params.cbCode.trim().toUpperCase();
+  const cbCode    = req.params.cbCode.trim().toUpperCase();
   const stockCode = cbCode.substring(0, 4);
-  const cbSeq    = cbCode.substring(4); // e.g. '5' or 'A'
+  const cbSeq     = cbCode.substring(4);
 
   console.log(`[CB Lookup] code=${cbCode}  stock=${stockCode}  seq=${cbSeq}`);
 
-  // 並行抓取所有資料
-  const [stockR, companyR, cbR] = await Promise.allSettled([
+  // 並行抓取：股價 + 公司資料 + MOPS(CB條件) + TWSE競拍公告(備援)
+  const [stockR, companyR, cbR, auctionR] = await Promise.allSettled([
     fetchStockPrice(stockCode),
     fetchCompanyInfo(stockCode),
     cbSeq ? fetchCBFromMOPS(stockCode, cbSeq) : Promise.resolve(null),
+    fetchCBFromAuction(cbCode),
   ]);
 
   const stock   = stockR.status   === 'fulfilled' ? stockR.value   : null;
   const company = companyR.status === 'fulfilled' ? companyR.value : null;
   const cb      = cbR.status      === 'fulfilled' ? cbR.value      : null;
+  const auction = auctionR.status === 'fulfilled' ? auctionR.value : null;
+
+  // MOPS 優先；抓不到時改用競拍公告資料
+  const collateral     = cb?.collateral    || auction?.collateral    || null;
+  const collateralText = cb?.collateralText|| auction?.collateralText|| null;
+  const issueSize      = cb?.issueSize     || auction?.issueSize     || null;
+  const term           = cb?.term          || auction?.term          || null;
+  const termIsDefault  = !cb?.term && !!auction?.term ? (auction?.termIsDefault ?? false) : false;
+  const uwName         = cb?.underwriter   || auction?.underwriter   || null;
 
   const out = {
     cbCode,
     stockCode,
     cbSeq,
-    // 股票資訊
     stockName:       stock?.fullName || stock?.name || company?.companyName || null,
     currentPrice:    stock?.price    || null,
-    prevClose:       stock?.prevClose || null,
+    prevClose:       stock?.prevClose|| null,
     market:          stock?.market   || null,
-    // CB 資訊
     conversionPrice: cb?.conversionPrice || null,
-    collateral:      cb?.collateral      || null,
-    collateralText:  cb?.collateralText  || null,
-    term:            cb?.term            || null,
-    issueSize:       cb?.issueSize       || null,
-    couponRate:      cb?.couponRate      || null,
-    underwriterKey:  cb?.underwriter ? mapUnderwriter(cb.underwriter) : null,
-    underwriterName: cb?.underwriter     || null,
-    // 公司資訊（TWSE 和 TPEX 的 産業別 均為數字代碼）
+    collateral,
+    collateralText,
+    term,
+    termIsDefault,   // true = 預設5年，未從 MOPS 確認
+    issueSize,
+    couponRate:      cb?.couponRate  || null,
+    underwriterKey:  uwName ? mapUnderwriter(uwName) : null,
+    underwriterName: uwName          || null,
     shareCapital: company?.shareCapital || null,
     industryKey: (() => {
       const code = company?.industryCode || company?.industryText;
@@ -318,13 +370,12 @@ app.get('/api/cb/:cbCode', async (req, res) => {
         return TPEX_INDUSTRY_NAMES[code.padStart(2,'0')] || `產業代碼 ${code}`;
       return code;
     })(),
-    // 快速查詢連結
     mopsUrl: `https://mops.twse.com.tw/mops/web/t158sb05?co_id=${stockCode}&cbno=${cbSeq}`,
-    // 狀態
     sources: {
-      stockPrice:  !!stock,
-      cbData:      !!cb,
-      companyData: !!company,
+      stockPrice:    !!stock,
+      cbData:        !!cb,
+      auctionData:   !!auction,
+      companyData:   !!company,
     },
     fetchedAt: new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }),
   };
@@ -435,6 +486,9 @@ app.get('/api/upcoming-cb', async (req, res) => {
           status = 'pending';   // 投標截止，等待開標
         }
 
+        const qtyRaw = parseFloat(String(row[IDX.quantity] || '0').replace(/,/g, ''));
+        const issueSize = qtyRaw > 0 ? parseFloat((qtyRaw / 1000).toFixed(2)) : null;
+
         return {
           cbCode,
           stockCode,
@@ -443,6 +497,7 @@ app.get('/api/upcoming-cb', async (req, res) => {
           market:       row[IDX.market]       || '',
           issueType,
           collateral,
+          issueSize,   // 億元
           biddingStart: row[IDX.biddingStart] || '',
           biddingEnd:   row[IDX.biddingEnd]   || '',
           auctionDate:  row[IDX.auctionDate]  || '',
