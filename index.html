@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>可轉債競標價格推估工具</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Microsoft JhengHei', 'PingFang TC', 'Noto Sans TC', sans-serif;
+      background: #eef2f7;
+      color: #1e293b;
+      min-height: 100vh;
+    }
+
+    /* ─── Header ─── */
+    .header {
+      background: linear-gradient(135deg, #0f3460 0%, #1a6fa5 60%, #0ea5e9 100%);
+      color: #fff;
+      padding: 28px 32px 24px;
+      box-shadow: 0 4px 20px rgba(15,52,96,.35);
+    }
+    .header-inner { max-width: 1100px; margin: 0 auto; }
+    .header h1 { font-size: 1.75rem; font-weight: 800; letter-spacing: .5px; }
+    .header p  { opacity: .82; margin-top: 6px; font-size: .9rem; line-height: 1.6; }
+    .header .badge {
+      display: inline-block; background: rgba(255,255,255,.18);
+      border: 1px solid rgba(255,255,255,.35);
+      border-radius: 20px; padding: 3px 12px; font-size: .75rem;
+      margin-top: 10px; letter-spacing: .4px;
+    }
+
+    /* ─── Layout ─── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+
+    /* ─── Cards ─── */
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 22px 24px;
+      box-shadow: 0 2px 14px rgba(0,0,0,.07);
+      margin-bottom: 18px;
+    }
+    .card-title {
+      font-size: 1rem; font-weight: 700; color: #0f3460;
+      border-left: 4px solid #0ea5e9;
+      padding-left: 12px; margin-bottom: 18px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    /* ─── Form ─── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group label {
+      font-size: .8rem; font-weight: 700; color: #475569;
+      margin-bottom: 6px; text-transform: uppercase; letter-spacing: .4px;
+    }
+    .form-group input,
+    .form-group select {
+      padding: 10px 13px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 9px;
+      font-size: .93rem;
+      color: #1e293b;
+      background: #f8fafc;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .form-group input:focus,
+    .form-group select:focus {
+      border-color: #0ea5e9;
+      box-shadow: 0 0 0 3px rgba(14,165,233,.15);
+      outline: none;
+      background: #fff;
+    }
+    .form-group .hint { font-size: .75rem; color: #94a3b8; margin-top: 5px; }
+
+    /* ─── Button ─── */
+    .calc-btn {
+      background: linear-gradient(135deg, #0f3460, #0ea5e9);
+      color: #fff;
+      border: none;
+      padding: 14px 0;
+      border-radius: 12px;
+      font-size: 1.05rem;
+      font-weight: 800;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 8px;
+      letter-spacing: .5px;
+      transition: transform .12s, box-shadow .12s;
+    }
+    .calc-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(14,165,233,.45);
+    }
+    .calc-btn:active { transform: translateY(0); }
+
+    /* ─── Formula box ─── */
+    .formula-box {
+      background: #f0f9ff;
+      border: 1px dashed #7dd3fc;
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-size: .83rem;
+      color: #0369a1;
+      margin-bottom: 18px;
+      line-height: 1.8;
+    }
+    .formula-box strong { color: #0c4a6e; }
+
+    /* ─── KPI boxes ─── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .kpi {
+      border-radius: 12px;
+      padding: 16px 14px;
+      text-align: center;
+    }
+    .kpi-blue { background: linear-gradient(135deg,#eff6ff,#dbeafe); border: 1px solid #93c5fd; }
+    .kpi-green { background: linear-gradient(135deg,#f0fdf4,#dcfce7); border: 1px solid #86efac; }
+    .kpi-amber { background: linear-gradient(135deg,#fffbeb,#fef9c3); border: 1px solid #fde047; }
+    .kpi-label { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 8px; }
+    .kpi-blue .kpi-label   { color: #1d4ed8; }
+    .kpi-green .kpi-label  { color: #166534; }
+    .kpi-amber .kpi-label  { color: #713f12; }
+    .kpi-value { font-size: 1.9rem; font-weight: 900; line-height: 1; }
+    .kpi-blue .kpi-value   { color: #1e3a8a; }
+    .kpi-green .kpi-value  { color: #14532d; }
+    .kpi-amber .kpi-value  { color: #78350f; }
+    .kpi-sub { font-size: .73rem; margin-top: 6px; }
+    .kpi-blue .kpi-sub   { color: #3b82f6; }
+    .kpi-green .kpi-sub  { color: #22c55e; }
+    .kpi-amber .kpi-sub  { color: #d97706; }
+
+    /* ─── Big price range ─── */
+    .bid-range-box {
+      background: linear-gradient(135deg, #0f3460, #1a6fa5);
+      border-radius: 14px;
+      padding: 22px;
+      text-align: center;
+      color: #fff;
+      margin-bottom: 22px;
+    }
+    .bid-range-box .label { font-size: .82rem; opacity: .8; margin-bottom: 8px; letter-spacing: .5px; }
+    .bid-range-box .price { font-size: 2.6rem; font-weight: 900; letter-spacing: 1px; }
+    .bid-range-box .price .unit { font-size: 1.1rem; font-weight: 600; opacity: .8; }
+    .bid-range-box .sub { font-size: .8rem; opacity: .72; margin-top: 8px; }
+
+    /* ─── Out of money warning ─── */
+    .oom-warning {
+      background: #fff7ed;
+      border: 1px solid #fdba74;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: .83rem;
+      color: #9a3412;
+      margin-bottom: 16px;
+    }
+
+    /* ─── Factors table ─── */
+    .factors-table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    .factors-table thead tr { background: #f1f5f9; }
+    .factors-table th {
+      padding: 9px 12px; text-align: left;
+      font-size: .75rem; font-weight: 700; color: #64748b;
+      text-transform: uppercase; letter-spacing: .3px;
+    }
+    .factors-table td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; }
+    .factors-table tbody tr:last-child td { border-bottom: none; }
+    .factors-table tbody tr:hover { background: #f8fafc; }
+    .factors-table .total-row { background: #f1f5f9; font-weight: 700; }
+    .adj-pos  { color: #16a34a; font-weight: 700; }
+    .adj-neg  { color: #dc2626; font-weight: 700; }
+    .adj-zero { color: #94a3b8; }
+
+    /* ─── Risk block ─── */
+    .risk-pill {
+      display: inline-block;
+      padding: 5px 18px; border-radius: 20px;
+      font-weight: 800; font-size: .88rem;
+      margin-bottom: 12px;
+    }
+    .risk-ok   { background: #dcfce7; color: #166534; }
+    .risk-med  { background: #fef9c3; color: #713f12; }
+    .risk-high { background: #fee2e2; color: #991b1b; }
+
+    .risk-guide {
+      background: #f8fafc;
+      border-radius: 9px;
+      padding: 14px;
+      font-size: .83rem;
+      line-height: 2;
+      color: #475569;
+    }
+    .risk-guide strong { color: #1e293b; }
+
+    /* ─── Disclaimer ─── */
+    .disclaimer {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-size: .8rem;
+      color: #7c2d12;
+      line-height: 1.7;
+    }
+
+    /* ─── Reference table ─── */
+    .ref-table { width: 100%; border-collapse: collapse; font-size: .83rem; margin-top: 6px; }
+    .ref-table th {
+      background: #f1f5f9; padding: 8px 10px;
+      font-size: .74rem; color: #64748b; text-align: left;
+    }
+    .ref-table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; }
+    .ref-table tbody tr:last-child td { border-bottom: none; }
+    .tag {
+      display: inline-block; border-radius: 4px; padding: 1px 7px;
+      font-size: .7rem; font-weight: 700;
+    }
+    .tag-sec { background: #dbeafe; color: #1d4ed8; }
+    .tag-unsec { background: #fce7f3; color: #9d174d; }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 680px) {
+      .form-grid   { grid-template-columns: 1fr; }
+      .kpi-grid    { grid-template-columns: 1fr; }
+      .bid-range-box .price { font-size: 2rem; }
+      .header h1   { font-size: 1.35rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ HEADER ══════════════ -->
+<div class="header">
+  <div class="header-inner">
+    <h1>📊 可轉債競標價格推估工具</h1>
+    <p>輸入發行條件，依擔保類型、產業、股本、承銷商等歷史統計數據，<br>
+       推估合理競標溢價率與建議出價區間。</p>
+    <div class="badge">方法參考：Rex大叔168台股投資教室 · 僅供參考，非投資建議</div>
+  </div>
+</div>
+
+<!-- ══════════════ MAIN ══════════════ -->
+<div class="container">
+
+  <!-- 計算公式說明 -->
+  <div class="formula-box">
+    <strong>核心公式：</strong>
+    　理論價格（轉換價值）＝（現股價 ÷ 轉換價格）× 100
+    <br>
+    <strong>建議競標價＝</strong>理論價格 × （1 ＋ 推估溢價率）
+    <br>
+    <em>範例：現股價 61.3、轉換價格 55 → 理論價格＝111.46；若溢價率 7%，競標建議價≈119.26</em>
+  </div>
+
+  <!-- ── Card 1：基本資訊 ── -->
+  <div class="card">
+    <div class="card-title">📋 基本發行資訊</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>股票代號 / 名稱（選填）</label>
+        <input type="text" id="stockCode" placeholder="例：53095 系統電七">
+      </div>
+      <div class="form-group"><!-- spacer --></div>
+
+      <div class="form-group">
+        <label>股票現價（元）</label>
+        <input type="number" id="stockPrice" placeholder="例：61.3" step="0.1" min="0">
+        <span class="hint">建議以截標日前收盤價為準</span>
+      </div>
+      <div class="form-group">
+        <label>轉換價格（元）</label>
+        <input type="number" id="conversionPrice" placeholder="例：55" step="0.1" min="0.01">
+        <span class="hint">發行說明書上的初始轉換價格</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Card 2：發行條件 ── -->
+  <div class="card">
+    <div class="card-title">📄 發行條件</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>擔保類型</label>
+        <select id="collateral">
+          <option value="secured">有擔保</option>
+          <option value="unsecured">無擔保</option>
+        </select>
+        <span class="hint">有擔保基準溢價較高，無擔保風險折扣較大</span>
+      </div>
+      <div class="form-group">
+        <label>發行年期</label>
+        <select id="term">
+          <option value="3">3 年</option>
+          <option value="5" selected>5 年</option>
+          <option value="7">7 年</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>發行規模（億元）</label>
+        <input type="number" id="issueSize" placeholder="例：15" step="0.5" min="0">
+        <span class="hint">發行金額越小，稀缺性越高</span>
+      </div>
+      <div class="form-group">
+        <label>股本大小（億元）</label>
+        <input type="number" id="shareCapital" placeholder="例：11.86" step="0.5" min="0">
+        <span class="hint">小股本通常溢價較高</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Card 3：其他因素 ── -->
+  <div class="card">
+    <div class="card-title">🏭 其他影響因素</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>產業類別</label>
+        <select id="industry">
+          <option value="telecom_ai">通訊網路 / AI / 矽光子</option>
+          <option value="semiconductor">半導體 / IC 設計</option>
+          <option value="electronics" selected>電子零組件</option>
+          <option value="computer">電腦周邊 / 伺服器</option>
+          <option value="biotech">生技 / 醫療</option>
+          <option value="consumer">消費 / 運動休閒</option>
+          <option value="traditional">傳統產業 / 紡織</option>
+          <option value="other">其他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>承銷商</label>
+        <select id="underwriter">
+          <option value="fubon">富邦證券</option>
+          <option value="yuanta">元大證券</option>
+          <option value="kaigi">凱基證券</option>
+          <option value="taishin">台新證券</option>
+          <option value="fubang">福邦證券</option>
+          <option value="qunyi">群益證券</option>
+          <option value="zhaofeng">兆豐證券</option>
+          <option value="fuhua">復華證券</option>
+          <option value="other">其他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>信用評等（TCRI）</label>
+        <select id="tcri">
+          <option value="na">不適用 / 未知</option>
+          <option value="1">1 分（最優）</option>
+          <option value="2">2 分</option>
+          <option value="3">3 分</option>
+          <option value="4">4 分（標準）</option>
+          <option value="5">5 分</option>
+          <option value="6">6 分</option>
+          <option value="7">7 分</option>
+          <option value="8">8 分（最差）</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>近期市場競標氛圍</label>
+        <select id="sentiment">
+          <option value="hot">熱絡（近期溢價普遍偏高）</option>
+          <option value="normal" selected>一般</option>
+          <option value="cold">冷淡（近期溢價普遍偏低）</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <button class="calc-btn" onclick="calculate()">🔍 計算推估競標價格</button>
+
+  <!-- ══════════════ RESULTS (hidden) ══════════════ -->
+  <div id="resultsSection" style="display:none; margin-top: 22px;">
+
+    <!-- 大標結果 -->
+    <div class="bid-range-box">
+      <div class="label">建議競標價格區間</div>
+      <div class="price" id="bigPriceRange">— 元</div>
+      <div class="sub" id="bigPriceSub"></div>
+    </div>
+
+    <!-- 3 KPI -->
+    <div class="kpi-grid">
+      <div class="kpi kpi-blue">
+        <div class="kpi-label">理論價格（轉換價值）</div>
+        <div class="kpi-value" id="kpiTheoretical">—</div>
+        <div class="kpi-sub" id="kpiTheoreticalSub"></div>
+      </div>
+      <div class="kpi kpi-green">
+        <div class="kpi-label">推估溢價率範圍</div>
+        <div class="kpi-value" id="kpiPremium">—</div>
+        <div class="kpi-sub">相較理論價格之溢價幅度</div>
+      </div>
+      <div class="kpi kpi-amber">
+        <div class="kpi-label">建議競標中間值</div>
+        <div class="kpi-value" id="kpiMid">—</div>
+        <div class="kpi-sub">取區間中點作為參考</div>
+      </div>
+    </div>
+
+    <!-- Out of money 提示 -->
+    <div class="oom-warning" id="oomWarning" style="display:none">
+      ⚠️ <strong>注意：</strong>目前股價低於轉換價格（理論價格 &lt; 100），此可轉債<strong>無履約價值</strong>，
+      屬於純債券性質。溢價率統計基於理論價格估算，競標時請特別謹慎，
+      建議參考歷史同類案例、信用評等及到期贖回條件再決策。
+    </div>
+
+    <!-- 因素拆解 -->
+    <div class="card">
+      <div class="card-title">🔬 各因素影響拆解</div>
+      <table class="factors-table">
+        <thead>
+          <tr>
+            <th>因素</th>
+            <th>您的選項</th>
+            <th>溢價率調整</th>
+            <th>說明</th>
+          </tr>
+        </thead>
+        <tbody id="factorsBody"></tbody>
+      </table>
+    </div>
+
+    <!-- 風險評估 -->
+    <div class="card">
+      <div class="card-title">⚠️ 風險評估與參考原則</div>
+      <div id="riskPill"></div>
+      <div class="risk-guide">
+        <strong>有擔保可轉債：</strong>溢價 10–15% 合理範圍，超過 15% 需謹慎評估<br>
+        <strong>無擔保可轉債：</strong>溢價 5–10% 可接受，超過 10–12% 風險偏高<br>
+        <strong>熱門產業題材：</strong>可適當提高上限 1–3%<br>
+        <strong>信用評等佳（TCRI 1–3）：</strong>歷史溢價明顯較高，可酌情上調<br>
+        <strong>原則：</strong>找一個與您風險承受度契合的價格投標，不強求最高溢價
+      </div>
+    </div>
+
+    <!-- 歷史參考 -->
+    <div class="card">
+      <div class="card-title">📚 歷史案例溢價率參考</div>
+      <table class="ref-table">
+        <thead>
+          <tr>
+            <th>案例</th>
+            <th>類型</th>
+            <th>理論價格</th>
+            <th>建議競標區間</th>
+            <th>溢價率區間</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>康普四（47394）</strong><br><span style="color:#64748b;font-size:.75rem">有擔保 5年 股本11.86億</span></td>
+            <td><span class="tag tag-sec">有擔保</span></td>
+            <td>97.74</td>
+            <td>107.53 – 110.21</td>
+            <td>10.0% – 12.8%</td>
+          </tr>
+          <tr>
+            <td><strong>系統電七（53095）</strong><br><span style="color:#64748b;font-size:.75rem">無擔保 5年 電子零組件</span></td>
+            <td><span class="tag tag-unsec">無擔保</span></td>
+            <td>111.46</td>
+            <td>118.60 – 120.88</td>
+            <td>6.4% – 8.5%</td>
+          </tr>
+          <tr>
+            <td><strong>光聖三（64423）</strong><br><span style="color:#64748b;font-size:.75rem">無擔保 3年 通訊網路/矽光子</span></td>
+            <td><span class="tag tag-unsec">無擔保</span></td>
+            <td>117.74</td>
+            <td>約 125 – 133</td>
+            <td>9.6% – 13.2%</td>
+          </tr>
+          <tr>
+            <td><strong>復盛二（66702）</strong><br><span style="color:#64748b;font-size:.75rem">無擔保 TCRI 3分 運動休閒</span></td>
+            <td><span class="tag tag-unsec">無擔保</span></td>
+            <td>95.19</td>
+            <td>109.56 – 111.37</td>
+            <td>15.1% – 17.0%</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="font-size:.73rem; color:#94a3b8; margin-top:8px;">
+        * 溢價率以「得標價格 / 理論價格 - 1」計算，歷史數據僅供參考，市場環境持續變化。
+      </div>
+    </div>
+
+    <!-- 免責聲明 -->
+    <div class="disclaimer">
+      <strong>⚠️ 免責聲明：</strong>本工具依歷史競拍統計數據建立估算模型，
+      係依據 Rex 大叔 168 台股投資教室文章中整理的研究方法，
+      <strong>僅供參考，不構成任何投資建議。</strong>
+      實際得標價格受當日市場供需、流動性、整體市況及個別投資人判斷影響，
+      本工具不保證任何結果之準確性。可轉債競標有賠本風險，請謹慎評估後自行決策。
+    </div>
+  </div><!-- /resultsSection -->
+
+</div><!-- /container -->
+
+<!-- ══════════════ JS ══════════════ -->
+<script>
+// ──────────────────────────────────────────────
+//  Data tables
+// ──────────────────────────────────────────────
+const INDUSTRY = {
+  telecom_ai:   { name: '通訊網路 / AI / 矽光子', adj:  2.5, note: '熱門科技題材大幅加成' },
+  semiconductor:{ name: '半導體 / IC 設計',       adj:  1.5, note: '科技核心，需求穩健' },
+  electronics:  { name: '電子零組件',              adj: -0.5, note: '中性產業，略低於均值' },
+  computer:     { name: '電腦周邊 / 伺服器',       adj:  0.5, note: 'AI 伺服器題材加成' },
+  biotech:      { name: '生技 / 醫療',             adj:  1.0, note: '長期護國神山題材' },
+  consumer:     { name: '消費 / 運動休閒',         adj:  0.0, note: '視個股題材而定' },
+  traditional:  { name: '傳統產業 / 紡織',         adj: -1.5, note: '題材不足，折扣較大' },
+  other:        { name: '其他',                    adj:  0.0, note: '依個案判斷' },
+};
+
+const TERM = {
+  '3': { name: '3 年',  adj: -1.0, note: '年期短，整體溢價稍低' },
+  '5': { name: '5 年',  adj:  0.0, note: '標準年期，基準值' },
+  '7': { name: '7 年',  adj:  0.5, note: '長年期，略高溢價' },
+};
+
+const UNDERWRITER = {
+  fubon:   { name: '富邦證券', adj:  0.5, note: '承銷能力強，歷史溢價佳' },
+  yuanta:  { name: '元大證券', adj:  0.5, note: '市場口碑佳' },
+  kaigi:   { name: '凱基證券', adj:  0.5, note: '承銷績效穩定' },
+  taishin: { name: '台新證券', adj:  0.0, note: '標準參考值' },
+  fubang:  { name: '福邦證券', adj: -0.5, note: '歷史樣本溢價率偏低' },
+  qunyi:   { name: '群益證券', adj:  0.5, note: '承銷績效優' },
+  zhaofeng:{ name: '兆豐證券', adj:  0.0, note: '標準參考值' },
+  fuhua:   { name: '復華證券', adj:  0.0, note: '標準參考值' },
+  other:   { name: '其他',     adj:  0.0, note: '依歷史記錄參考' },
+};
+
+const TCRI = {
+  na: { name: '不適用',       adj:  0.0, note: '無評等資料' },
+  '1':{ name: '1 分（最優）', adj:  2.0, note: '最高信用，投資人追捧' },
+  '2':{ name: '2 分',         adj:  1.5, note: '高信用等級' },
+  '3':{ name: '3 分',         adj:  0.5, note: '中高信用，歷史溢價偏高' },
+  '4':{ name: '4 分（標準）', adj:  0.0, note: '市場基準值' },
+  '5':{ name: '5 分',         adj: -0.5, note: '信用稍低' },
+  '6':{ name: '6 分',         adj: -1.0, note: '信用較低，折扣明顯' },
+  '7':{ name: '7 分',         adj: -2.0, note: '信用風險顯著' },
+  '8':{ name: '8 分（最差）', adj: -2.0, note: '高風險，謹慎評估' },
+};
+
+const SENTIMENT = {
+  hot:    { name: '熱絡',  adj:  1.0, note: '近期競標溢價普遍偏高' },
+  normal: { name: '一般',  adj:  0.0, note: '市場正常水準' },
+  cold:   { name: '冷淡',  adj: -1.5, note: '市場觀望，溢價壓縮' },
+};
+
+// ──────────────────────────────────────────────
+//  Main calculation
+// ──────────────────────────────────────────────
+function calculate() {
+  const stockPrice      = parseFloat(document.getElementById('stockPrice').value);
+  const conversionPrice = parseFloat(document.getElementById('conversionPrice').value);
+
+  if (!stockPrice || !conversionPrice || conversionPrice <= 0) {
+    alert('請填入「股票現價」與「轉換價格」');
+    return;
+  }
+
+  // ── Step 1: Theoretical price ──
+  const theoretical = (stockPrice / conversionPrice) * 100;
+
+  // ── Step 2: Base premium range ──
+  const collateral = document.getElementById('collateral').value;
+  let minP = collateral === 'secured' ? 9  : 6;
+  let maxP = collateral === 'secured' ? 13 : 10;
+  const baseLabel = collateral === 'secured' ? '有擔保' : '無擔保';
+
+  const rows = [
+    {
+      factor: '擔保條件（基準）',
+      option: baseLabel,
+      adj: 0,
+      note: collateral === 'secured'
+        ? `基準溢價率 ${minP}%–${maxP}%（有擔保歷史均值約 11%）`
+        : `基準溢價率 ${minP}%–${maxP}%（無擔保整體均值約 8%）`,
+    }
+  ];
+
+  // ── Adjustments ──
+  const ind  = INDUSTRY[document.getElementById('industry').value];
+  const term = TERM[document.getElementById('term').value];
+  const uw   = UNDERWRITER[document.getElementById('underwriter').value];
+  const tcri = TCRI[document.getElementById('tcri').value];
+  const sent = SENTIMENT[document.getElementById('sentiment').value];
+
+  // Share capital
+  const sc = parseFloat(document.getElementById('shareCapital').value);
+  let scAdj = 0, scName = '未輸入', scNote = '未輸入，不計入調整';
+  if (!isNaN(sc) && sc > 0) {
+    if      (sc < 5)  { scAdj =  2.0; scName = `${sc} 億（超小型）`; scNote = '小股本題材稀缺，溢價高'; }
+    else if (sc < 10) { scAdj =  1.0; scName = `${sc} 億（中小型）`; scNote = '小股本加成'; }
+    else if (sc < 20) { scAdj =  0.0; scName = `${sc} 億（中型）`;   scNote = '中性基準'; }
+    else if (sc < 50) { scAdj = -0.5; scName = `${sc} 億（中大型）`; scNote = '大股本稍低溢價'; }
+    else              { scAdj = -1.5; scName = `${sc} 億（大型）`;   scNote = '大股本流動性折扣'; }
+  }
+
+  // Issue size
+  const is = parseFloat(document.getElementById('issueSize').value);
+  let isAdj = 0, isName = '未輸入', isNote = '未輸入，不計入調整';
+  if (!isNaN(is) && is > 0) {
+    if      (is < 3)  { isAdj =  1.0; isName = `${is} 億（小型）`;   isNote = '稀缺性加成'; }
+    else if (is < 8)  { isAdj =  0.5; isName = `${is} 億（中小型）`; isNote = '適中規模'; }
+    else if (is < 15) { isAdj =  0.0; isName = `${is} 億（中型）`;   isNote = '標準規模，基準值'; }
+    else              { isAdj = -0.5; isName = `${is} 億（大型）`;   isNote = '規模較大，稍低溢價'; }
+  }
+
+  rows.push(
+    { factor: '產業類別',     option: ind.name,  adj: ind.adj,  note: ind.note  },
+    { factor: '發行年期',     option: term.name, adj: term.adj, note: term.note },
+    { factor: '股本大小',     option: scName,    adj: scAdj,    note: scNote    },
+    { factor: '發行規模',     option: isName,    adj: isAdj,    note: isNote    },
+    { factor: '承銷商',       option: uw.name,   adj: uw.adj,   note: uw.note   },
+    { factor: '信用評等(TCRI)', option: tcri.name, adj: tcri.adj, note: tcri.note },
+    { factor: '市場氛圍',     option: sent.name, adj: sent.adj, note: sent.note },
+  );
+
+  const totalAdj = ind.adj + term.adj + scAdj + isAdj + uw.adj + tcri.adj + sent.adj;
+  minP = Math.max(0, minP + totalAdj);
+  maxP = Math.max(minP + 0.5, Math.min(35, maxP + totalAdj));
+
+  // ── Step 3: Final prices ──
+  const bidMin = theoretical * (1 + minP / 100);
+  const bidMax = theoretical * (1 + maxP / 100);
+  const bidMid = (bidMin + bidMax) / 2;
+
+  // ──────────── Render ────────────
+
+  // Big range box
+  const code = document.getElementById('stockCode').value.trim();
+  document.getElementById('bigPriceRange').innerHTML =
+    `${bidMin.toFixed(2)} <span class="unit">元</span> ～ ${bidMax.toFixed(2)} <span class="unit">元</span>`;
+  document.getElementById('bigPriceSub').textContent =
+    `${code ? code + '　' : ''}溢價率 ${minP.toFixed(1)}% ～ ${maxP.toFixed(1)}%　|　理論價格 ${theoretical.toFixed(2)}`;
+
+  // KPIs
+  document.getElementById('kpiTheoretical').textContent = theoretical.toFixed(2);
+  document.getElementById('kpiTheoreticalSub').textContent =
+    theoretical >= 100
+      ? `有履約價值（在價內 ${(theoretical - 100).toFixed(1)}%）`
+      : `無履約價值（價外 ${(100 - theoretical).toFixed(1)}%）`;
+  document.getElementById('kpiPremium').textContent = `${minP.toFixed(1)}% – ${maxP.toFixed(1)}%`;
+  document.getElementById('kpiMid').textContent = `${bidMid.toFixed(2)} 元`;
+
+  // OOM warning
+  document.getElementById('oomWarning').style.display = theoretical < 100 ? 'block' : 'none';
+
+  // Factors table
+  const tbody = document.getElementById('factorsBody');
+  tbody.innerHTML = '';
+  rows.forEach(r => {
+    const cls  = r.adj > 0 ? 'adj-pos' : r.adj < 0 ? 'adj-neg' : 'adj-zero';
+    const text = r.adj > 0 ? `+${r.adj.toFixed(1)}%` : r.adj < 0 ? `${r.adj.toFixed(1)}%` : '±0%';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${r.factor}</strong></td>
+      <td>${r.option}</td>
+      <td class="${cls}">${text}</td>
+      <td style="color:#64748b">${r.note}</td>`;
+    tbody.appendChild(tr);
+  });
+  const totalClass = totalAdj > 0 ? 'adj-pos' : totalAdj < 0 ? 'adj-neg' : 'adj-zero';
+  const totalText  = totalAdj > 0 ? `+${totalAdj.toFixed(1)}%` : `${totalAdj.toFixed(1)}%`;
+  const totalTr = document.createElement('tr');
+  totalTr.className = 'total-row';
+  totalTr.innerHTML = `
+    <td colspan="2">總調整量</td>
+    <td class="${totalClass}">${totalText}</td>
+    <td style="color:#64748b">加總後套用至基準溢價率</td>`;
+  tbody.appendChild(totalTr);
+
+  // Risk pill
+  const avgP = (minP + maxP) / 2;
+  let pillClass, pillText, riskMsg;
+  if (collateral === 'secured') {
+    if (avgP > 15) { pillClass = 'risk-high'; pillText = '高溢價 ⚠️'; riskMsg = '有擔保超過 15% 溢價，風險偏高，建議保守出價或降低倉位'; }
+    else if (avgP > 12) { pillClass = 'risk-med'; pillText = '偏高 ⚡'; riskMsg = '有擔保溢價偏高，確認產業基本面與市況後再決定'; }
+    else { pillClass = 'risk-ok'; pillText = '合理 ✓'; riskMsg = '有擔保可轉債，溢價率在歷史合理範圍內'; }
+  } else {
+    if (avgP > 12) { pillClass = 'risk-high'; pillText = '高溢價 ⚠️'; riskMsg = '無擔保超過 12% 溢價風險高，需特別謹慎評估信用與題材'; }
+    else if (avgP > 9) { pillClass = 'risk-med'; pillText = '偏高 ⚡'; riskMsg = '無擔保溢價偏高，建議確認強力產業題材或信評支撐再出價'; }
+    else { pillClass = 'risk-ok'; pillText = '合理 ✓'; riskMsg = '無擔保可轉債，溢價率在可接受範圍，注意個案信用風險'; }
+  }
+  document.getElementById('riskPill').innerHTML =
+    `<span class="risk-pill ${pillClass}">${pillText}</span>
+     <div style="color:#374151; font-size:.86rem; margin-bottom:14px;">${riskMsg}</div>`;
+
+  // Show results
+  const sec = document.getElementById('resultsSection');
+  sec.style.display = 'block';
+  sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+</script>
+
+</body>
+</html>

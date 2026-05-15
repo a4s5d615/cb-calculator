@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>可轉債競標價格推估工具</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Microsoft JhengHei','PingFang TC','Noto Sans TC',sans-serif;
+           background: #eef2f7; color: #1e293b; min-height: 100vh; }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #0f3460 0%, #1a6fa5 55%, #0ea5e9 100%);
+      color: #fff; padding: 26px 32px 22px;
+      box-shadow: 0 4px 20px rgba(15,52,96,.35);
+    }
+    .header-inner { max-width: 980px; margin: 0 auto; }
+    .header h1 { font-size: 1.7rem; font-weight: 800; }
+    .header p  { opacity: .82; margin-top: 5px; font-size: .88rem; }
+    .badge {
+      display: inline-block; background: rgba(255,255,255,.18);
+      border: 1px solid rgba(255,255,255,.3);
+      border-radius: 20px; padding: 3px 12px;
+      font-size: .72rem; margin-top: 9px; letter-spacing: .3px;
+    }
+
+    /* ── Container ── */
+    .container { max-width: 980px; margin: 0 auto; padding: 22px 14px 48px; }
+
+    /* ── Card ── */
+    .card { background: #fff; border-radius: 14px; padding: 20px 22px;
+            box-shadow: 0 2px 14px rgba(0,0,0,.07); margin-bottom: 16px; }
+    .card-title {
+      font-size: .97rem; font-weight: 700; color: #0f3460;
+      border-left: 4px solid #0ea5e9; padding-left: 11px;
+      margin-bottom: 16px; display: flex; align-items: center; gap: 7px;
+    }
+
+    /* ── CB Search ── */
+    .search-wrap {
+      display: flex; gap: 10px; align-items: stretch;
+    }
+    .search-wrap input {
+      flex: 1; padding: 13px 16px;
+      border: 2px solid #cbd5e1; border-radius: 10px;
+      font-size: 1.1rem; font-weight: 700; letter-spacing: 1px;
+      transition: border-color .2s;
+    }
+    .search-wrap input:focus { border-color: #0ea5e9; outline: none; }
+    .fetch-btn {
+      background: linear-gradient(135deg, #0f3460, #0ea5e9);
+      color: #fff; border: none; padding: 0 26px;
+      border-radius: 10px; font-size: .97rem; font-weight: 800;
+      cursor: pointer; white-space: nowrap;
+      transition: transform .1s, box-shadow .1s;
+    }
+    .fetch-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(14,165,233,.45); }
+    .fetch-btn:disabled { opacity: .6; cursor: wait; }
+
+    .search-hint { font-size: .78rem; color: #94a3b8; margin-top: 7px; }
+
+    /* ── Status bar ── */
+    .status-bar {
+      display: none; align-items: center; gap: 10px;
+      background: #f0f9ff; border: 1px solid #bae6fd;
+      border-radius: 9px; padding: 10px 14px; margin-top: 12px;
+      font-size: .83rem; color: #0369a1;
+    }
+    .status-bar .dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    }
+    .dot-ok      { background: #22c55e; }
+    .dot-missing { background: #f59e0b; }
+    .dot-error   { background: #ef4444; }
+    .dot-spin {
+      background: #0ea5e9;
+      animation: spin-pulse 1s ease-in-out infinite;
+    }
+    @keyframes spin-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ── Form grid ── */
+    .form-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
+    }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group label {
+      font-size: .76rem; font-weight: 700; color: #475569;
+      margin-bottom: 5px; text-transform: uppercase; letter-spacing: .35px;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .auto-tag {
+      background: #dcfce7; color: #166534;
+      border-radius: 4px; padding: 1px 6px; font-size: .67rem;
+      font-weight: 700; letter-spacing: 0;
+    }
+    .manual-tag {
+      background: #fef9c3; color: #713f12;
+      border-radius: 4px; padding: 1px 6px; font-size: .67rem;
+      font-weight: 700; letter-spacing: 0;
+    }
+    .form-group input, .form-group select {
+      padding: 9px 12px; border: 1.5px solid #cbd5e1;
+      border-radius: 8px; font-size: .92rem; color: #1e293b;
+      background: #f8fafc; transition: border-color .2s, box-shadow .2s;
+    }
+    .form-group input:focus, .form-group select:focus {
+      border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14,165,233,.13);
+      outline: none; background: #fff;
+    }
+    .field-auto { border-color: #86efac !important; background: #f0fdf4 !important; }
+    .form-group .hint { font-size: .74rem; color: #94a3b8; margin-top: 4px; }
+
+    /* ── Calc button ── */
+    .calc-btn {
+      background: linear-gradient(135deg, #0f3460, #0ea5e9);
+      color: #fff; border: none; padding: 13px 0;
+      border-radius: 11px; font-size: 1rem; font-weight: 800;
+      cursor: pointer; width: 100%; margin-top: 6px; letter-spacing: .4px;
+      transition: transform .12s, box-shadow .12s;
+    }
+    .calc-btn:hover { transform: translateY(-2px); box-shadow: 0 5px 18px rgba(14,165,233,.4); }
+
+    /* ── Big result ── */
+    .bid-box {
+      background: linear-gradient(135deg, #0f3460, #1a6fa5);
+      border-radius: 14px; padding: 22px; text-align: center; color: #fff;
+      margin-bottom: 18px;
+    }
+    .bid-box .label { font-size: .8rem; opacity: .78; margin-bottom: 6px; letter-spacing: .4px; }
+    .bid-box .price { font-size: 2.5rem; font-weight: 900; letter-spacing: 1px; }
+    .bid-box .unit  { font-size: 1rem; font-weight: 600; opacity: .78; }
+    .bid-box .sub   { font-size: .78rem; opacity: .7; margin-top: 6px; }
+
+    /* ── KPI grid ── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 13px; margin-bottom: 18px; }
+    .kpi { border-radius: 11px; padding: 14px 12px; text-align: center; }
+    .kpi-b { background: linear-gradient(135deg,#eff6ff,#dbeafe); border: 1px solid #93c5fd; }
+    .kpi-g { background: linear-gradient(135deg,#f0fdf4,#dcfce7); border: 1px solid #86efac; }
+    .kpi-y { background: linear-gradient(135deg,#fffbeb,#fef9c3); border: 1px solid #fde047; }
+    .kpi .kpi-label { font-size: .72rem; font-weight: 700; text-transform: uppercase;
+                      letter-spacing: .35px; margin-bottom: 7px; }
+    .kpi-b .kpi-label { color: #1d4ed8; }
+    .kpi-g .kpi-label { color: #166534; }
+    .kpi-y .kpi-label { color: #713f12; }
+    .kpi .kpi-val { font-size: 1.75rem; font-weight: 900; line-height: 1; }
+    .kpi-b .kpi-val { color: #1e3a8a; }
+    .kpi-g .kpi-val { color: #14532d; }
+    .kpi-y .kpi-val { color: #78350f; }
+    .kpi .kpi-sub { font-size: .7rem; margin-top: 5px; }
+    .kpi-b .kpi-sub { color: #3b82f6; }
+    .kpi-g .kpi-sub { color: #22c55e; }
+    .kpi-y .kpi-sub { color: #d97706; }
+
+    /* ── Factors table ── */
+    .factors-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+    .factors-table thead tr { background: #f1f5f9; }
+    .factors-table th { padding: 8px 11px; text-align: left;
+      font-size: .72rem; font-weight: 700; color: #64748b;
+      text-transform: uppercase; letter-spacing: .3px; }
+    .factors-table td { padding: 8px 11px; border-bottom: 1px solid #f1f5f9; }
+    .factors-table tbody tr:hover { background: #f8fafc; }
+    .factors-table .total-row { background: #f1f5f9; font-weight: 700; }
+    .adj-pos  { color: #16a34a; font-weight: 700; }
+    .adj-neg  { color: #dc2626; font-weight: 700; }
+    .adj-zero { color: #94a3b8; }
+
+    /* ── Risk ── */
+    .risk-pill { display: inline-block; padding: 4px 16px;
+      border-radius: 20px; font-weight: 800; font-size: .86rem; margin-bottom: 10px; }
+    .risk-ok   { background: #dcfce7; color: #166534; }
+    .risk-med  { background: #fef9c3; color: #713f12; }
+    .risk-high { background: #fee2e2; color: #991b1b; }
+    .risk-guide { background: #f8fafc; border-radius: 8px; padding: 13px;
+      font-size: .82rem; line-height: 2; color: #475569; }
+
+    /* ── OOM warning ── */
+    .oom-warn { background: #fff7ed; border: 1px solid #fdba74;
+      border-radius: 9px; padding: 11px 14px; font-size: .81rem; color: #9a3412; margin-bottom: 14px; }
+
+    /* ── Reference table ── */
+    .ref-table { width: 100%; border-collapse: collapse; font-size: .81rem; }
+    .ref-table th { background: #f1f5f9; padding: 7px 10px;
+      font-size: .71rem; color: #64748b; text-align: left; }
+    .ref-table td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; }
+    .tag { display: inline-block; border-radius: 4px; padding: 1px 6px;
+           font-size: .68rem; font-weight: 700; }
+    .tag-sec   { background: #dbeafe; color: #1d4ed8; }
+    .tag-unsec { background: #fce7f3; color: #9d174d; }
+
+    /* ── Auction table ── */
+    .auction-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+    .auction-table th {
+      background: #f1f5f9; padding: 9px 10px;
+      font-size: .72rem; font-weight: 700; color: #64748b;
+      text-align: left; white-space: nowrap;
+    }
+    .auction-table td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; white-space: nowrap; }
+    .auction-table tbody tr { cursor: pointer; transition: background .15s; }
+    .auction-table tbody tr:hover { background: #f0f9ff; }
+    .auction-table tbody tr.row-bidding { background: #f0fdf4; }
+    .auction-table tbody tr.row-bidding:hover { background: #dcfce7; }
+    .status-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 20px;
+      font-size: .72rem; font-weight: 700;
+    }
+    .badge-bidding  { background: #dcfce7; color: #166534; }
+    .badge-upcoming { background: #dbeafe; color: #1d4ed8; }
+    .badge-pending  { background: #fef9c3; color: #713f12; }
+    .refresh-btn {
+      border: 1px solid #cbd5e1; background: #f8fafc; color: #475569;
+      padding: 4px 13px; border-radius: 6px; font-size: .78rem; cursor: pointer;
+      transition: background .15s;
+    }
+    .refresh-btn:hover { background: #e2e8f0; }
+    .refresh-btn:disabled { opacity: .6; cursor: wait; }
+
+    /* ── Disclaimer ── */
+    .disclaimer { background: #fff7ed; border: 1px solid #fed7aa;
+      border-radius: 9px; padding: 13px 16px; font-size: .78rem;
+      color: #7c2d12; line-height: 1.7; }
+
+    /* ── Formula hint ── */
+    .formula-box { background: #f0f9ff; border: 1px dashed #7dd3fc;
+      border-radius: 9px; padding: 12px 16px; font-size: .81rem;
+      color: #0369a1; margin-bottom: 16px; line-height: 1.9; }
+    .formula-box strong { color: #0c4a6e; }
+
+    @media (max-width: 660px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .kpi-grid  { grid-template-columns: 1fr; }
+      .bid-box .price { font-size: 1.9rem; }
+      .search-wrap { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <h1>📊 可轉債競標價格推估工具</h1>
+    <p>輸入可轉債代號，系統自動抓取股價、公司資本額、CB 條件，一鍵推估合理競標區間。</p>
+    <div class="badge">資料來源：TWSE MIS · TWSE OpenAPI · MOPS 公開資訊觀測站 ｜ 僅供參考</div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ── 近期競拍可轉債 ── -->
+  <div class="card" id="auctionCard">
+    <div class="card-title" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <span>🏆 近期競拍可轉債</span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span id="auctionCount" style="font-size:.73rem;color:#94a3b8;font-weight:400"></span>
+        <button class="refresh-btn" id="refreshBtn" onclick="loadUpcomingCBs()">↻ 重新整理</button>
+      </div>
+    </div>
+    <div id="auctionLoading" style="text-align:center;padding:24px;color:#94a3b8;font-size:.84rem">
+      ⏳ 正在載入近期競拍資料…
+    </div>
+    <div id="auctionTableWrap" style="display:none;overflow-x:auto">
+      <table class="auction-table">
+        <thead><tr>
+          <th>代號</th>
+          <th>公司名稱</th>
+          <th>類型</th>
+          <th>現股價</th>
+          <th>投標期間</th>
+          <th>開標日</th>
+          <th>最低投標價</th>
+          <th>轉換價格</th>
+          <th>承銷商</th>
+          <th>狀態</th>
+        </tr></thead>
+        <tbody id="auctionBody"></tbody>
+      </table>
+      <div style="font-size:.71rem;color:#94a3b8;margin-top:8px">
+        * 點擊任一列自動帶入代號並查詢。轉換價格須至 MOPS 查詢後手動輸入。資料來源：TWSE 競價拍賣公告 + mopsov + TWSE MIS。
+      </div>
+    </div>
+    <div id="auctionEmpty" style="display:none;text-align:center;padding:24px;color:#94a3b8;font-size:.84rem">
+      近期無即將競拍的可轉債
+    </div>
+  </div>
+
+  <!-- ── 搜尋 ── -->
+  <div class="card">
+    <div class="card-title">🔎 輸入可轉債代號</div>
+    <div class="search-wrap">
+      <input type="text" id="cbCodeInput" placeholder="例：53095　47394　66702"
+             maxlength="6" style="text-align:center"
+             onkeydown="if(event.key==='Enter') fetchAll()">
+      <button class="fetch-btn" id="fetchBtn" onclick="fetchAll()">⚡ 自動抓取</button>
+    </div>
+    <div class="search-hint">
+      輸入 5 碼可轉債代號（前 4 碼為股票代號，第 5 碼為 CB 序號）
+      ｜ <strong>自動抓取：</strong>股票現價、股本、產業別
+      ｜ <strong>需手動填寫：</strong>轉換價格、擔保類型（於 MOPS 或發行說明書查詢）
+    </div>
+    <div class="status-bar" id="statusBar">
+      <div class="dot dot-spin" id="statusDot"></div>
+      <span id="statusText">正在抓取資料…</span>
+    </div>
+  </div>
+
+  <div class="formula-box">
+    <strong>核心公式：</strong>
+    　理論價格 ＝（現股價 ÷ 轉換價格）× 100
+    <br>
+    <strong>競標建議價</strong> ＝ 理論價格 × （1 ＋ 溢價率）
+    <br>
+    <em style="color:#64748b">各項條件自動帶入後可手動微調，再按「計算」取得建議區間。</em>
+  </div>
+
+  <!-- ── 基本資訊（自動填入）── -->
+  <div class="card">
+    <div class="card-title">📋 基本發行資訊 <span style="font-size:.73rem;color:#94a3b8;font-weight:400">（自動抓取，可手動修改）</span></div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>股票代號 / 名稱 <span class="auto-tag">自動</span></label>
+        <input type="text" id="stockName" placeholder="自動填入" readonly
+               style="background:#f1f5f9;cursor:default">
+      </div>
+      <div class="form-group">
+        <label>股票現價（元）<span class="auto-tag">自動</span></label>
+        <input type="number" id="stockPrice" placeholder="自動填入" step="0.01" min="0">
+        <span class="hint">抓不到時請手動輸入截標日收盤價</span>
+      </div>
+      <div class="form-group">
+        <label>轉換價格（元）<span class="auto-tag">自動</span></label>
+        <input type="number" id="conversionPrice" placeholder="自動填入" step="0.01" min="0.01">
+        <span class="hint">抓不到時請查發行說明書</span>
+      </div>
+      <div class="form-group">
+        <label>股本大小（億元）<span class="auto-tag">自動</span></label>
+        <input type="number" id="shareCapital" placeholder="自動填入" step="0.5" min="0">
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 發行條件 ── -->
+  <div class="card">
+    <div class="card-title">📄 發行條件 <span style="font-size:.73rem;color:#94a3b8;font-weight:400">（MOPS 自動帶入，可修改）</span></div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>擔保類型 <span class="auto-tag">自動</span></label>
+        <select id="collateral">
+          <option value="secured">有擔保</option>
+          <option value="unsecured">無擔保</option>
+        </select>
+        <span class="hint">有擔保基準溢價率較高</span>
+      </div>
+      <div class="form-group">
+        <label>發行年期 <span class="auto-tag">自動</span></label>
+        <select id="term">
+          <option value="3">3 年</option>
+          <option value="5" selected>5 年</option>
+          <option value="7">7 年</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>發行規模（億元）<span class="auto-tag">自動</span></label>
+        <input type="number" id="issueSize" placeholder="自動填入" step="0.5" min="0">
+      </div>
+      <div class="form-group">
+        <label>承銷商 <span class="auto-tag">自動</span></label>
+        <select id="underwriter">
+          <option value="fubon">富邦證券</option>
+          <option value="yuanta">元大證券</option>
+          <option value="kaigi">凱基證券</option>
+          <option value="taishin">台新證券</option>
+          <option value="fubang">福邦證券</option>
+          <option value="qunyi">群益證券</option>
+          <option value="zhaofeng">兆豐證券</option>
+          <option value="fuhua">復華證券</option>
+          <option value="other" selected>其他</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 其他因素（手動）── -->
+  <div class="card">
+    <div class="card-title">🏭 其他影響因素 <span style="font-size:.73rem;color:#94a3b8;font-weight:400">（部分自動，部分手動）</span></div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>產業類別 <span class="auto-tag">自動</span></label>
+        <select id="industry">
+          <option value="telecom_ai">通訊網路 / AI / 矽光子</option>
+          <option value="semiconductor">半導體 / IC 設計</option>
+          <option value="electronics" selected>電子零組件</option>
+          <option value="computer">電腦周邊 / 伺服器</option>
+          <option value="biotech">生技 / 醫療</option>
+          <option value="consumer">消費 / 運動休閒</option>
+          <option value="traditional">傳統產業 / 紡織</option>
+          <option value="other">其他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>信用評等（TCRI）<span class="manual-tag">手動</span></label>
+        <select id="tcri">
+          <option value="na" selected>不適用 / 未知</option>
+          <option value="1">1 分（最優）</option>
+          <option value="2">2 分</option>
+          <option value="3">3 分</option>
+          <option value="4">4 分（標準）</option>
+          <option value="5">5 分</option>
+          <option value="6">6 分</option>
+          <option value="7">7 分</option>
+          <option value="8">8 分（最差）</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>近期市場競標氛圍 <span class="manual-tag">手動</span></label>
+        <select id="sentiment">
+          <option value="hot">熱絡（近期溢價普遍偏高）</option>
+          <option value="normal" selected>一般</option>
+          <option value="cold">冷淡（近期溢價普遍偏低）</option>
+        </select>
+      </div>
+      <div class="form-group"><!-- spacer --></div>
+    </div>
+  </div>
+
+  <button class="calc-btn" onclick="calculate()">🔍 計算推估競標價格</button>
+
+  <!-- ══════════ RESULTS ══════════ -->
+  <div id="resultsSection" style="display:none; margin-top:20px;">
+
+    <div class="bid-box">
+      <div class="label">建議競標價格區間</div>
+      <div class="price" id="bigPrice">— 元</div>
+      <div class="sub"  id="bigSub"></div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi kpi-b">
+        <div class="kpi-label">理論價格（轉換價值）</div>
+        <div class="kpi-val" id="kpiTheory">—</div>
+        <div class="kpi-sub" id="kpiTheorySub"></div>
+      </div>
+      <div class="kpi kpi-g">
+        <div class="kpi-label">推估溢價率範圍</div>
+        <div class="kpi-val" id="kpiPremium">—</div>
+        <div class="kpi-sub">相較理論價格之溢價幅度</div>
+      </div>
+      <div class="kpi kpi-y">
+        <div class="kpi-label">建議中間值</div>
+        <div class="kpi-val" id="kpiMid">—</div>
+        <div class="kpi-sub">取區間中點作為參考出價</div>
+      </div>
+    </div>
+
+    <div class="oom-warn" id="oomWarn" style="display:none">
+      ⚠️ <strong>注意：</strong>股價低於轉換價格（理論價格 &lt; 100），此 CB 目前<strong>無履約價值</strong>，
+      屬純債券性質，競標時請特別謹慎，須評估到期還本能力與信用風險。
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔬 各因素影響拆解</div>
+      <table class="factors-table">
+        <thead><tr>
+          <th>因素</th><th>條件</th><th>溢價率調整</th><th>說明</th>
+        </tr></thead>
+        <tbody id="factorsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚠️ 風險評估</div>
+      <div id="riskPill"></div>
+      <div class="risk-guide">
+        <strong>有擔保：</strong>溢價 10–15% 合理，超過 15% 需謹慎<br>
+        <strong>無擔保：</strong>溢價 5–10% 可接受，超過 10–12% 風險偏高<br>
+        <strong>熱門題材：</strong>可適當上調 1–3%<br>
+        <strong>信用評等佳（TCRI 1–3）：</strong>歷史溢價明顯偏高<br>
+        <strong>原則：</strong>找一個與您風險承受度契合的價格投標，不強求最高溢價
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📚 歷史案例參考</div>
+      <table class="ref-table">
+        <thead><tr>
+          <th>案例</th><th>類型</th><th>理論價格</th><th>建議競標區間</th><th>溢價率</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>康普四（47394）</strong><br><span style="color:#64748b;font-size:.73rem">有擔保 5年 股本11.86億</span></td>
+            <td><span class="tag tag-sec">有擔保</span></td>
+            <td>97.74</td><td>107.53 – 110.21</td><td>10.0%–12.8%</td>
+          </tr>
+          <tr>
+            <td><strong>系統電七（53095）</strong><br><span style="color:#64748b;font-size:.73rem">無擔保 5年 電子零組件</span></td>
+            <td><span class="tag tag-unsec">無擔保</span></td>
+            <td>111.46</td><td>118.60 – 120.88</td><td>6.4%–8.5%</td>
+          </tr>
+          <tr>
+            <td><strong>光聖三（64423）</strong><br><span style="color:#64748b;font-size:.73rem">無擔保 3年 通訊/矽光子</span></td>
+            <td><span class="tag tag-unsec">無擔保</span></td>
+            <td>117.74</td><td>約 125 – 133</td><td>9.6%–13.2%</td>
+          </tr>
+          <tr>
+            <td><strong>復盛二（66702）</strong><br><span style="color:#64748b;font-size:.73rem">無擔保 TCRI 3分 運動休閒</span></td>
+            <td><span class="tag tag-unsec">無擔保</span></td>
+            <td>95.19</td><td>109.56 – 111.37</td><td>15.1%–17.0%</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="font-size:.71rem;color:#94a3b8;margin-top:7px">
+        * 溢價率 ＝ 得標價格 ÷ 理論價格 − 1，歷史數據僅供參考。
+      </div>
+    </div>
+
+    <div class="disclaimer">
+      <strong>⚠️ 免責聲明：</strong>本工具依 Rex 大叔 168 台股投資教室之研究方法建立估算模型，
+      所有資料來源於公開平台（TWSE / MOPS），<strong>僅供參考，不構成投資建議。</strong>
+      實際得標價格受當日市場供需、流動性及投資人判斷影響，本工具不保證準確性。
+      可轉債競標有賠本風險，請謹慎評估後自行決策。
+    </div>
+
+  </div><!-- /results -->
+</div><!-- /container -->
+
+<script>
+// ─────────── 靜態設定 ───────────
+const INDUSTRY_MAP = {
+  telecom_ai:   { name:'通訊網路/AI/矽光子',   adj: 2.5, note:'熱門科技題材大幅加成' },
+  semiconductor:{ name:'半導體/IC設計',         adj: 1.5, note:'科技核心，需求穩健' },
+  electronics:  { name:'電子零組件',            adj:-0.5, note:'中性產業，略低於均值' },
+  computer:     { name:'電腦周邊/伺服器',        adj: 0.5, note:'AI 伺服器題材加成' },
+  biotech:      { name:'生技/醫療',             adj: 1.0, note:'長期護國神山題材' },
+  consumer:     { name:'消費/運動休閒',          adj: 0.0, note:'視個股題材而定' },
+  traditional:  { name:'傳統產業/紡織',          adj:-1.5, note:'題材不足，折扣較大' },
+  other:        { name:'其他',                   adj: 0.0, note:'依個案判斷' },
+};
+const TERM_MAP = {
+  '3':{ name:'3 年', adj:-1.0, note:'年期短，整體溢價稍低' },
+  '5':{ name:'5 年', adj: 0.0, note:'標準年期，基準值' },
+  '7':{ name:'7 年', adj: 0.5, note:'長年期，略高溢價' },
+};
+const UW_MAP = {
+  fubon:   { name:'富邦證券', adj: 0.5, note:'承銷能力強，歷史溢價佳' },
+  yuanta:  { name:'元大證券', adj: 0.5, note:'市場口碑佳' },
+  kaigi:   { name:'凱基證券', adj: 0.5, note:'承銷績效穩定' },
+  taishin: { name:'台新證券', adj: 0.0, note:'標準參考值' },
+  fubang:  { name:'福邦證券', adj:-0.5, note:'歷史樣本溢價率偏低' },
+  qunyi:   { name:'群益證券', adj: 0.5, note:'承銷績效優' },
+  zhaofeng:{ name:'兆豐證券', adj: 0.0, note:'標準參考值' },
+  fuhua:   { name:'復華證券', adj: 0.0, note:'標準參考值' },
+  other:   { name:'其他',     adj: 0.0, note:'依歷史記錄參考' },
+};
+const TCRI_MAP = {
+  na: { name:'不適用', adj: 0.0, note:'-' },
+  '1':{ name:'1分（最優）', adj: 2.0, note:'最高信用，投資人追捧' },
+  '2':{ name:'2分',         adj: 1.5, note:'高信用等級' },
+  '3':{ name:'3分',         adj: 0.5, note:'中高信用，歷史溢價偏高' },
+  '4':{ name:'4分（標準）', adj: 0.0, note:'市場基準值' },
+  '5':{ name:'5分',         adj:-0.5, note:'信用稍低' },
+  '6':{ name:'6分',         adj:-1.0, note:'信用較低，折扣明顯' },
+  '7':{ name:'7分',         adj:-2.0, note:'信用風險顯著' },
+  '8':{ name:'8分（最差）', adj:-2.0, note:'高風險，謹慎評估' },
+};
+const SENT_MAP = {
+  hot:   { name:'熱絡',  adj: 1.0, note:'近期競標溢價普遍偏高' },
+  normal:{ name:'一般',  adj: 0.0, note:'市場正常水準' },
+  cold:  { name:'冷淡',  adj:-1.5, note:'市場觀望，溢價壓縮' },
+};
+
+// ─────────── 近期競拍 CB ───────────
+async function loadUpcomingCBs() {
+  const loading    = document.getElementById('auctionLoading');
+  const tableWrap  = document.getElementById('auctionTableWrap');
+  const emptyMsg   = document.getElementById('auctionEmpty');
+  const countEl    = document.getElementById('auctionCount');
+  const refreshBtn = document.getElementById('refreshBtn');
+
+  loading.style.display    = 'block';
+  tableWrap.style.display  = 'none';
+  emptyMsg.style.display   = 'none';
+  refreshBtn.disabled      = true;
+  refreshBtn.textContent   = '⏳ 載入中…';
+
+  try {
+    const res  = await fetch('/api/upcoming-cb');
+    const json = await res.json();
+
+    loading.style.display  = 'none';
+    refreshBtn.disabled    = false;
+    refreshBtn.textContent = '↻ 重新整理';
+
+    if (!json.ok || !json.data || json.data.length === 0) {
+      emptyMsg.style.display = 'block';
+      countEl.textContent = '近期無競拍';
+      return;
+    }
+
+    countEl.textContent = `共 ${json.total} 筆 ｜ ${json.updatedAt}`;
+
+    const tbody = document.getElementById('auctionBody');
+    tbody.innerHTML = '';
+
+    json.data.forEach(cb => {
+      const tr = document.createElement('tr');
+      if (cb.status === 'bidding') tr.className = 'row-bidding';
+
+      const collTag = cb.collateral === 'unsecured'
+        ? '<span class="tag tag-unsec">無擔保</span>'
+        : '<span class="tag tag-sec">有擔保</span>';
+
+      let badge;
+      if      (cb.status === 'bidding')  badge = '<span class="status-badge badge-bidding">🔥 投標中</span>';
+      else if (cb.status === 'upcoming') badge = '<span class="status-badge badge-upcoming">即將開放</span>';
+      else                               badge = '<span class="status-badge badge-pending">等待開標</span>';
+
+      // 現股價欄：有資料顯示價格，否則顯示 —
+      const priceCell = cb.stockPrice
+        ? `<strong style="color:#0369a1">${cb.stockPrice}</strong>`
+        : '<span style="color:#94a3b8">—</span>';
+
+      // 轉換價格欄：永遠顯示 MOPS 查詢按鈕（無法伺服器端自動抓取）
+      const convCell = `<a href="${cb.mopsUrl}" target="_blank" rel="noopener"
+          style="display:inline-block;background:#eff6ff;color:#1d4ed8;
+                 border:1px solid #93c5fd;border-radius:5px;padding:3px 8px;
+                 font-size:.7rem;font-weight:700;text-decoration:none;white-space:nowrap"
+          onclick="event.stopPropagation()">查MOPS ↗</a>`;
+
+      tr.innerHTML = `
+        <td><strong style="color:#0f3460;font-size:.9rem">${cb.cbCode}</strong></td>
+        <td>${cb.stockName || cb.companyName}</td>
+        <td>${collTag}</td>
+        <td style="text-align:right;padding-right:14px">${priceCell}</td>
+        <td style="font-size:.78rem;color:#475569">${cb.biddingStart}<br>～ ${cb.biddingEnd}</td>
+        <td style="font-weight:700">${cb.auctionDate}</td>
+        <td><strong>${cb.minBidPrice}</strong> 元</td>
+        <td>${convCell}</td>
+        <td style="color:#475569">${cb.underwriter}</td>
+        <td>${badge}</td>
+      `;
+
+      tr.addEventListener('click', () => {
+        const input = document.getElementById('cbCodeInput');
+        input.value = cb.cbCode;
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(fetchAll, 250);
+      });
+
+      tbody.appendChild(tr);
+    });
+
+    tableWrap.style.display = 'block';
+  } catch (e) {
+    console.error('[loadUpcomingCBs]', e);
+    loading.textContent = '❌ 載入失敗，請按「重新整理」再試';
+    refreshBtn.disabled    = false;
+    refreshBtn.textContent = '↻ 重新整理';
+  }
+}
+
+// 頁面開啟時自動載入
+window.addEventListener('DOMContentLoaded', loadUpcomingCBs);
+
+// ─────────── 自動抓取 ───────────
+function setStatus(text, type) {
+  const bar = document.getElementById('statusBar');
+  const dot = document.getElementById('statusDot');
+  bar.style.display = 'flex';
+  document.getElementById('statusText').textContent = text;
+  dot.className = 'dot dot-' + type;
+}
+
+function markFieldAuto(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('field-auto');
+}
+function clearFieldAuto(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('field-auto');
+}
+
+async function fetchAll() {
+  const code = document.getElementById('cbCodeInput').value.trim();
+  if (!code || code.length < 4) {
+    alert('請輸入至少 4 碼的可轉債代號'); return;
+  }
+
+  const btn = document.getElementById('fetchBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 抓取中…';
+  setStatus('正在連線 TWSE / MOPS，請稍候…', 'spin');
+
+  try {
+    const res  = await fetch(`/api/cb/${encodeURIComponent(code)}`);
+    const data = await res.json();
+
+    let successCount = 0;
+    const missing = [];
+
+    // ── 股票名稱 + 現股價 ──
+    if (data.currentPrice) {
+      document.getElementById('stockPrice').value = data.currentPrice;
+      document.getElementById('stockName').value  =
+        `${data.stockCode} ${data.stockName || ''}`.trim();
+      markFieldAuto('stockPrice');
+      successCount++;
+    } else {
+      clearFieldAuto('stockPrice');
+      missing.push('股票現價');
+    }
+
+    // ── 股本 ──
+    if (data.shareCapital) {
+      document.getElementById('shareCapital').value = data.shareCapital;
+      markFieldAuto('shareCapital');
+      successCount++;
+    } else {
+      clearFieldAuto('shareCapital');
+      missing.push('股本大小');
+    }
+
+    // ── 轉換價格 ──
+    if (data.conversionPrice) {
+      document.getElementById('conversionPrice').value = data.conversionPrice;
+      markFieldAuto('conversionPrice');
+      successCount++;
+    } else {
+      clearFieldAuto('conversionPrice');
+      missing.push('轉換價格');
+    }
+
+    // ── 擔保類型 ──
+    if (data.collateral) {
+      document.getElementById('collateral').value = data.collateral;
+      markFieldAuto('collateral');
+      successCount++;
+    } else {
+      clearFieldAuto('collateral');
+    }
+
+    // ── 年期 ──
+    if (data.term && [3,5,7].includes(data.term)) {
+      document.getElementById('term').value = String(data.term);
+      markFieldAuto('term');
+      successCount++;
+    } else if (data.term) {
+      // 不是標準年期，取最近值
+      const t = data.term <= 4 ? '3' : data.term <= 6 ? '5' : '7';
+      document.getElementById('term').value = t;
+      markFieldAuto('term');
+    }
+
+    // ── 發行規模 ──
+    if (data.issueSize) {
+      document.getElementById('issueSize').value = data.issueSize;
+      markFieldAuto('issueSize');
+      successCount++;
+    } else {
+      clearFieldAuto('issueSize');
+      missing.push('發行規模');
+    }
+
+    // ── 承銷商 ──
+    if (data.underwriterKey) {
+      document.getElementById('underwriter').value = data.underwriterKey;
+      markFieldAuto('underwriter');
+      successCount++;
+    }
+
+    // ── 產業 ──
+    if (data.industryKey) {
+      document.getElementById('industry').value = data.industryKey;
+      markFieldAuto('industry');
+      successCount++;
+    }
+
+    // ── 狀態列 ──
+    const cbManualFields = ['轉換價格', '擔保類型', '年期', '發行規模', '承銷商'];
+    const hasCBData = !!data.conversionPrice;
+    const autoCount = [data.currentPrice, data.shareCapital, data.industryKey]
+                        .filter(Boolean).length;
+
+    if (autoCount === 3 && hasCBData) {
+      setStatus(`✅ 所有欄位自動帶入完成（${data.fetchedAt}）`, 'ok');
+    } else if (autoCount > 0) {
+      const mopsLink = data.mopsUrl
+        ? `　<a href="${data.mopsUrl}" target="_blank" style="color:#0369a1;font-weight:700">→ 開啟 MOPS 查詢 CB 資料</a>`
+        : '';
+      const msg = hasCBData
+        ? `⚡ 股價/股本/產業已自動帶入，部分欄位請確認（${data.fetchedAt}）`
+        : `⚡ 股價(${data.currentPrice})、股本(${data.shareCapital}億)、產業已自動帶入。`
+          + `&nbsp;轉換價格等 CB 條件請到 MOPS 查詢後手動填入。${mopsLink}`;
+      document.getElementById('statusText').innerHTML = msg;
+      document.getElementById('statusBar').style.display = 'flex';
+      document.getElementById('statusDot').className = 'dot dot-missing';
+    } else {
+      setStatus('❌ 資料抓取失敗，請手動填寫所有欄位', 'error');
+    }
+
+  } catch (err) {
+    console.error(err);
+    setStatus('❌ 連線失敗，請確認伺服器是否正常運作', 'error');
+  }
+
+  btn.disabled = false;
+  btn.textContent = '⚡ 自動抓取';
+}
+
+// ─────────── 計算 ───────────
+function adjText(v) {
+  return v > 0 ? `+${v.toFixed(1)}%` : v < 0 ? `${v.toFixed(1)}%` : '±0%';
+}
+function adjClass(v) {
+  return v > 0 ? 'adj-pos' : v < 0 ? 'adj-neg' : 'adj-zero';
+}
+
+function calculate() {
+  const sp = parseFloat(document.getElementById('stockPrice').value);
+  const cp = parseFloat(document.getElementById('conversionPrice').value);
+  if (!sp || !cp || cp <= 0) { alert('請填入「股票現價」與「轉換價格」'); return; }
+
+  const theoretical = (sp / cp) * 100;
+  const collateral  = document.getElementById('collateral').value;
+
+  let minP = collateral === 'secured' ? 9  : 6;
+  let maxP = collateral === 'secured' ? 13 : 10;
+
+  const rows = [{
+    factor: '擔保條件（基準）',
+    option: collateral === 'secured' ? '有擔保' : '無擔保',
+    adj: 0,
+    note: collateral === 'secured' ? `基準溢價率 ${minP}%–${maxP}%` : `基準溢價率 ${minP}%–${maxP}%`,
+  }];
+
+  const ind  = INDUSTRY_MAP[document.getElementById('industry').value];
+  const term = TERM_MAP[document.getElementById('term').value];
+  const uw   = UW_MAP[document.getElementById('underwriter').value];
+  const tcri = TCRI_MAP[document.getElementById('tcri').value];
+  const sent = SENT_MAP[document.getElementById('sentiment').value];
+
+  // 股本
+  const sc = parseFloat(document.getElementById('shareCapital').value);
+  let scAdj = 0, scName = '未輸入', scNote = '未輸入，不計入';
+  if (!isNaN(sc) && sc > 0) {
+    if      (sc < 5)  { scAdj= 2.0; scName=`${sc}億（超小型）`; scNote='小股本題材稀缺，溢價高'; }
+    else if (sc < 10) { scAdj= 1.0; scName=`${sc}億（中小型）`; scNote='小股本加成'; }
+    else if (sc < 20) { scAdj= 0.0; scName=`${sc}億（中型）`;   scNote='中性基準'; }
+    else if (sc < 50) { scAdj=-0.5; scName=`${sc}億（中大型）`; scNote='大股本稍低溢價'; }
+    else              { scAdj=-1.5; scName=`${sc}億（大型）`;   scNote='大股本流動性折扣'; }
+  }
+
+  // 發行規模
+  const is = parseFloat(document.getElementById('issueSize').value);
+  let isAdj = 0, isName = '未輸入', isNote = '未輸入，不計入';
+  if (!isNaN(is) && is > 0) {
+    if      (is < 3)  { isAdj= 1.0; isName=`${is}億（小型）`;   isNote='稀缺性加成'; }
+    else if (is < 8)  { isAdj= 0.5; isName=`${is}億（中小型）`; isNote='適中規模'; }
+    else if (is < 15) { isAdj= 0.0; isName=`${is}億（中型）`;   isNote='標準規模'; }
+    else              { isAdj=-0.5; isName=`${is}億（大型）`;   isNote='規模大，稍低溢價'; }
+  }
+
+  rows.push(
+    { factor:'產業類別',     option:ind.name,  adj:ind.adj,  note:ind.note  },
+    { factor:'發行年期',     option:term.name, adj:term.adj, note:term.note },
+    { factor:'股本大小',     option:scName,    adj:scAdj,    note:scNote    },
+    { factor:'發行規模',     option:isName,    adj:isAdj,    note:isNote    },
+    { factor:'承銷商',       option:uw.name,   adj:uw.adj,   note:uw.note   },
+    { factor:'信用評等(TCRI)',option:tcri.name, adj:tcri.adj, note:tcri.note },
+    { factor:'市場氛圍',     option:sent.name, adj:sent.adj, note:sent.note },
+  );
+
+  const totalAdj = ind.adj + term.adj + scAdj + isAdj + uw.adj + tcri.adj + sent.adj;
+  minP = Math.max(0, minP + totalAdj);
+  maxP = Math.max(minP + 0.5, Math.min(35, maxP + totalAdj));
+
+  const bidMin = theoretical * (1 + minP / 100);
+  const bidMax = theoretical * (1 + maxP / 100);
+  const bidMid = (bidMin + bidMax) / 2;
+
+  // ── 渲染 ──
+  const nameVal = document.getElementById('stockName').value;
+  document.getElementById('bigPrice').innerHTML =
+    `${bidMin.toFixed(2)} <span class="unit">元</span> ～ ${bidMax.toFixed(2)} <span class="unit">元</span>`;
+  document.getElementById('bigSub').textContent =
+    `${nameVal ? nameVal+'　' : ''}溢價率 ${minP.toFixed(1)}%～${maxP.toFixed(1)}%　|　理論價格 ${theoretical.toFixed(2)}`;
+
+  document.getElementById('kpiTheory').textContent = theoretical.toFixed(2);
+  document.getElementById('kpiTheorySub').textContent =
+    theoretical >= 100
+      ? `有履約價值（價內 ${(theoretical-100).toFixed(1)}%）`
+      : `無履約價值（價外 ${(100-theoretical).toFixed(1)}%）`;
+  document.getElementById('kpiPremium').textContent = `${minP.toFixed(1)}%–${maxP.toFixed(1)}%`;
+  document.getElementById('kpiMid').textContent = `${bidMid.toFixed(2)} 元`;
+
+  document.getElementById('oomWarn').style.display = theoretical < 100 ? 'block' : 'none';
+
+  // Factors table
+  const tbody = document.getElementById('factorsBody');
+  tbody.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><strong>${r.factor}</strong></td>
+      <td>${r.option}</td>
+      <td class="${adjClass(r.adj)}">${adjText(r.adj)}</td>
+      <td style="color:#64748b">${r.note}</td>`;
+    tbody.appendChild(tr);
+  });
+  const totalTr = document.createElement('tr');
+  totalTr.className = 'total-row';
+  totalTr.innerHTML = `<td colspan="2">總調整量</td>
+    <td class="${adjClass(totalAdj)}">${adjText(totalAdj)}</td>
+    <td style="color:#64748b">加總後套用至基準溢價率</td>`;
+  tbody.appendChild(totalTr);
+
+  // Risk
+  const avgP = (minP + maxP) / 2;
+  let pc, pt, pm;
+  if (collateral === 'secured') {
+    if (avgP > 15)      { pc='risk-high'; pt='高溢價 ⚠️'; pm='有擔保超過 15%，風險偏高，建議保守出價'; }
+    else if (avgP > 12) { pc='risk-med';  pt='偏高 ⚡';   pm='有擔保溢價偏高，確認基本面再決定'; }
+    else                { pc='risk-ok';   pt='合理 ✓';    pm='有擔保，溢價率在歷史合理範圍'; }
+  } else {
+    if (avgP > 12)      { pc='risk-high'; pt='高溢價 ⚠️'; pm='無擔保超過 12%，需特別謹慎評估信用與題材'; }
+    else if (avgP > 9)  { pc='risk-med';  pt='偏高 ⚡';   pm='無擔保溢價偏高，建議確認強力產業題材支撐再出價'; }
+    else                { pc='risk-ok';   pt='合理 ✓';    pm='無擔保，溢價率在可接受範圍，注意個案信用風險'; }
+  }
+  document.getElementById('riskPill').innerHTML =
+    `<span class="risk-pill ${pc}">${pt}</span>
+     <div style="color:#374151;font-size:.84rem;margin-bottom:12px">${pm}</div>`;
+
+  const sec = document.getElementById('resultsSection');
+  sec.style.display = 'block';
+  sec.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+</script>
+</body>
+</html>
