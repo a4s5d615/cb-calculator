@@ -599,6 +599,7 @@
             <th>公司名稱</th>
             <th>類型</th>
             <th>規模(億)</th>
+            <th>轉換價格</th>
             <th>最低投標價</th>
             <th>最低得標價</th>
             <th>加權均價</th>
@@ -1009,12 +1010,20 @@ async function loadBacktest() {
       const size    = row.issueSize    != null ? row.issueSize.toFixed(2)    : '—';
       const qualQty = row.qualifiedQty != null ? row.qualifiedQty.toLocaleString() : '—';
 
+      const mopsBtn = `<a href="${row.mopsUrl}" target="_blank" rel="noopener"
+          onclick="event.stopPropagation()"
+          style="display:inline-block;background:#eff6ff;color:#1d4ed8;
+                 border:1px solid #93c5fd;border-radius:5px;padding:2px 7px;
+                 font-size:.67rem;font-weight:700;text-decoration:none;white-space:nowrap">
+          查MOPS ↗</a>`;
+
       tr.innerHTML = `
         <td style="white-space:nowrap;font-size:.78rem">${row.auctionDate}</td>
         <td><strong style="color:#0f3460">${row.cbCode}</strong></td>
         <td style="font-size:.82rem">${row.companyName}</td>
         <td>${collTag}</td>
         <td style="text-align:right;padding-right:10px">${size}</td>
+        <td>${mopsBtn}</td>
         <td style="text-align:right;padding-right:10px">${minBid}</td>
         <td style="text-align:right;padding-right:10px">${minWin}</td>
         <td style="text-align:right;padding-right:10px">${avgWin}</td>
