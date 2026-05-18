@@ -385,6 +385,146 @@ app.get('/api/cb/:cbCode', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+//  共用：日期解析（民國年 YYYY/MM/DD）
+// ─────────────────────────────────────────────
+function parseDate(s) {
+  if (!s) return null;
+  const parts = String(s).split('/').map(Number);
+  if (parts.length !== 3 || isNaN(parts[0])) return null;
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// ─────────────────────────────────────────────
+//  回測 API：GET /api/backtest
+//  取得全年 CB 競拍結果，計算溢價率 / 超額認購
+// ─────────────────────────────────────────────
+app.get('/api/backtest', async (req, res) => {
+  try {
+    const r = await http.get(
+      'https://www.twse.com.tw/rwd/zh/announcement/auction?response=json',
+      { headers: { ...BASE_HEADERS, Referer: 'https://www.twse.com.tw/' } }
+    );
+    const fields = r.data?.fields || [];
+    const rows   = r.data?.data   || [];
+
+    const fi = {};
+    fields.forEach((name, i) => { fi[name] = i; });
+
+    const IDX = {
+      auctionDate:  fi['開標日期']                      ?? 1,
+      name:         fi['證券名稱']                      ?? 2,
+      code:         fi['證券代號']                      ?? 3,
+      issueType:    fi['發行性質']                      ?? 5,
+      biddingStart: fi['投標開始日']                    ?? 7,
+      biddingEnd:   fi['投標結束日']                    ?? 8,
+      quantity:     fi['競拍數量(張)']                  ?? 9,
+      minBidPrice:  fi['最低投標價格(元)']              ?? 10,
+      listingDate:  fi['撥券日期(上市、上櫃日期)']      ?? 15,
+      underwriter:  fi['主辦券商']                      ?? 16,
+      totalBids:    fi['總合格件']                      ?? 19,
+      qualifiedQty: fi['合格投標數量(張)']              ?? 20,
+      minWinPrice:  fi['最低得標價格(元)']              ?? 21,
+      maxWinPrice:  fi['最高得標價格(元)']              ?? 22,
+      avgWinPrice:  fi['得標加權平均價格(元)']          ?? 23,
+      cancelled:    fi['取消競價拍賣(流標或取消)']      ?? 25,
+    };
+
+    const n = (v) => parseFloat(String(v || '0').replace(/,/g, '')) || 0;
+
+    const all = rows
+      .filter(row => (row[IDX.issueType] || '').includes('轉換公司債'))
+      .map(row => {
+        const cbCode     = String(row[IDX.code] || '').trim();
+        const stockCode  = cbCode.slice(0, 4);
+        const issueType  = row[IDX.issueType] || '';
+        const collateral = issueType.includes('無擔保') ? 'unsecured' : 'secured';
+        const cancelStr  = String(row[IDX.cancelled] || '').trim();
+        const qty        = n(row[IDX.quantity]);
+        const qualQty    = n(row[IDX.qualifiedQty]);
+        const minBid     = n(row[IDX.minBidPrice]);
+        const avgWin     = n(row[IDX.avgWinPrice]);
+        const minWin     = n(row[IDX.minWinPrice]);
+        const maxWin     = n(row[IDX.maxWinPrice]);
+        const totalBids  = n(row[IDX.totalBids]);
+
+        const completed        = avgWin > 0;
+        const cancelled        = !!cancelStr;
+        const flowed           = /流標/.test(cancelStr);
+        const issueSize        = qty > 0 ? parseFloat((qty / 1000).toFixed(2)) : null;
+        const premiumOverPar   = completed ? parseFloat((avgWin - 100).toFixed(2)) : null;
+        const premiumOverMin   = (completed && minBid > 0)
+                                  ? parseFloat(((avgWin / minBid - 1) * 100).toFixed(2)) : null;
+        const subscriptionRate = (qty > 0 && qualQty > 0)
+                                  ? parseFloat((qualQty / qty).toFixed(2)) : null;
+
+        // 熱度分級
+        let heat = 'pending';
+        if (cancelled || flowed) heat = 'cancelled';
+        else if (completed) {
+          if (premiumOverPar >= 20)      heat = 'hot';
+          else if (premiumOverPar >= 8)  heat = 'warm';
+          else                           heat = 'cold';
+        }
+
+        return {
+          cbCode, stockCode,
+          companyName:  row[IDX.name]        || '',
+          collateral, issueType, issueSize,
+          biddingStart: row[IDX.biddingStart]|| '',
+          biddingEnd:   row[IDX.biddingEnd]  || '',
+          auctionDate:  row[IDX.auctionDate] || '',
+          listingDate:  row[IDX.listingDate] || '',
+          underwriter:  row[IDX.underwriter] || '',
+          minBidPrice: minBid || null,
+          minWinPrice: minWin || null,
+          maxWinPrice: maxWin || null,
+          avgWinPrice: avgWin || null,
+          totalBids:   totalBids || null,
+          qualifiedQty: qualQty || null,
+          subscriptionRate,
+          premiumOverPar,
+          premiumOverMin,
+          completed, cancelled, flowed, heat,
+          mopsUrl: `https://mops.twse.com.tw/mops/web/t158sb05?co_id=${stockCode}&cbno=${cbCode.slice(4)}`,
+        };
+      })
+      .sort((a, b) => (parseDate(b.auctionDate) || 0) - (parseDate(a.auctionDate) || 0));
+
+    // ── 統計 ──
+    const done    = all.filter(c => c.completed);
+    const unsec   = done.filter(c => c.collateral === 'unsecured');
+    const sec     = done.filter(c => c.collateral === 'secured');
+    const avg     = (arr, fn) => arr.length ? parseFloat((arr.reduce((s,x)=>s+(fn(x)||0),0)/arr.length).toFixed(2)) : null;
+
+    const stats = {
+      totalCount:       all.length,
+      completedCount:   done.length,
+      unsecuredCount:   unsec.length,
+      securedCount:     sec.length,
+      avgPremiumAll:    avg(done, x=>x.premiumOverPar),
+      avgPremiumUnsec:  avg(unsec, x=>x.premiumOverPar),
+      avgPremiumSec:    avg(sec,   x=>x.premiumOverPar),
+      avgSubRateAll:    avg(done, x=>x.subscriptionRate),
+      avgSubRateUnsec:  avg(unsec, x=>x.subscriptionRate),
+      avgSubRateSec:    avg(sec,   x=>x.subscriptionRate),
+      hotCount:   done.filter(x=>x.heat==='hot').length,
+      warmCount:  done.filter(x=>x.heat==='warm').length,
+      coldCount:  done.filter(x=>x.heat==='cold').length,
+      maxPremium: done.reduce((m,x)=>Math.max(m,x.premiumOverPar||0), 0),
+      minPremium: done.reduce((m,x)=>Math.min(m,x.premiumOverPar??99), 99),
+    };
+
+    res.json({ ok: true, data: all, stats,
+      updatedAt: new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) });
+  } catch(e) {
+    console.error('[backtest]', e.message);
+    res.json({ ok: false, data: [], stats: null, error: e.message });
+  }
+});
+
+// ─────────────────────────────────────────────
 //  mopsov IpoQueryFast – 取得競拍補充資料
 //  （承銷商名、撥券日等；轉換價格不在此 API）
 // ─────────────────────────────────────────────
@@ -447,15 +587,6 @@ app.get('/api/upcoming-cb', async (req, res) => {
     // 今日（台灣時間，忽略時分秒）
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
     now.setHours(0, 0, 0, 0);
-
-    function parseDate(s) {
-      if (!s) return null;
-      const parts = String(s).split('/').map(Number);
-      if (parts.length !== 3 || isNaN(parts[0])) return null;
-      const d = new Date(parts[0], parts[1] - 1, parts[2]);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    }
 
     const cbList = rows
       .filter(row => {
